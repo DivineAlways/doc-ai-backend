@@ -5,3 +5,4 @@ pypdf
 chromadb
 openai
 python-multipart
+sentence-transformers
