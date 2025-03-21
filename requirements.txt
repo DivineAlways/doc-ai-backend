@@ -1,7 +1,11 @@
 fastapi
 uvicorn
-pypdf
+pymupdf
 python-multipart
-google-generativeai
-chromadb
-fitz
+pydantic
+requests
+numpy
+pandas
+aiofiles
+google-generativeai  # If using Gemini API
+openai  # If using OpenAI API
