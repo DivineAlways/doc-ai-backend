@@ -1,6 +1,7 @@
+faiss-cpu
 fastapi
 uvicorn
-openai
-chromadb
 pypdf
+chromadb
+openai
 python-multipart
