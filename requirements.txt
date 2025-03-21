@@ -3,3 +3,4 @@ uvicorn
 pypdf
 python-multipart
 google-generativeai
+chromadb
