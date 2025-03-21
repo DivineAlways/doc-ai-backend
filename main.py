@@ -4,23 +4,18 @@ import openai
 import os
 import shutil
 from pypdf import PdfReader
-from typing import List
 from uuid import uuid4
 
-# 🔑 Load OpenAI API Key from Environment Variables
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    raise ValueError("Missing OpenAI API Key")
-
-openai.api_key = OPENAI_API_KEY
+# 🔑 Load OpenAI API Key
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "your-api-key-here")
 
 # 🚀 Initialize FastAPI App
 app = FastAPI()
 
-# 🔥 Enable CORS to Allow Frontend Requests
+# 🔥 Fix CORS Issue
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Change this in production
+    allow_origins=["*"],  # 👈 Allow all origins (Change this in production)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -40,7 +35,7 @@ def extract_text_from_pdf(pdf_path: str) -> str:
 
 
 def generate_embedding(text: str):
-    """Generate embeddings using OpenAI API (Updated for new OpenAI SDK)."""
+    """Generate embeddings using OpenAI API (New SDK)."""
     response = openai.embeddings.create(input=[text], model="text-embedding-3-small")
     return response.data[0].embedding
 
@@ -49,16 +44,16 @@ def generate_embedding(text: str):
 async def upload_file(file: UploadFile = File(...), user_id: str = Form(...)):
     """Handle PDF Upload, Extract Text, and Store Embeddings"""
     file_path = os.path.join(UPLOAD_DIR, f"{uuid4()}_{file.filename}")
-    
+
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-    
+
     text = extract_text_from_pdf(file_path)
     if not text:
         raise HTTPException(status_code=400, detail="Could not extract text from the file.")
-    
+
     embedding = generate_embedding(text)
-    
+
     return {"message": "File uploaded and processed successfully."}
 
 
@@ -74,9 +69,9 @@ async def query_documents(query: str, user_id: str):
             {"role": "user", "content": query}
         ]
     )
-    
+
     return {"response": completion.choices[0].message.content}
 
 
-# Run the server using:
+# ✅ Run the server using:
 # uvicorn main:app --host 0.0.0.0 --port 8000 --reload
