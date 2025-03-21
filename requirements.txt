@@ -4,3 +4,4 @@ pypdf
 python-multipart
 google-generativeai
 chromadb
+fitz
