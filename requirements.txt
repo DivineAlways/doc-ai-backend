@@ -1,8 +1,5 @@
-faiss-cpu
 fastapi
 uvicorn
 pypdf
-chromadb
-openai
 python-multipart
-sentence-transformers
+google-generativeai
