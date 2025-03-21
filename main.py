@@ -1,69 +1,85 @@
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+import fitz  # PyMuPDF
+import sqlite3
 import os
-import shutil
-import fitz  # PyMuPDF for PDF text extraction
 
 app = FastAPI()
 
-# Allow frontend requests
-origins = ["http://localhost:3000", "https://your-vercel-app.vercel.app"]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+DB_FILE = "pdf_data.db"
 
-UPLOAD_FOLDER = "uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# Ensure database exists
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pdfs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            filename TEXT,
+            content TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
 
-# In-memory storage for simplicity
-db = {}
+init_db()
 
+# Upload endpoint
+@app.post("/upload/")
+async def upload_pdf(file: UploadFile = File(...)):
+    try:
+        # Read and extract text from PDF
+        pdf_doc = fitz.open(stream=file.file.read(), filetype="pdf")
+        extracted_text = "\n".join([page.get_text() for page in pdf_doc])
+        
+        if not extracted_text.strip():
+            raise HTTPException(status_code=400, detail="PDF is empty or cannot be read.")
+
+        # Store in database
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO pdfs (filename, content) VALUES (?, ?)", (file.filename, extracted_text))
+        conn.commit()
+        conn.close()
+
+        return JSONResponse(content={"message": "File uploaded successfully", "filename": file.filename})
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+# Query endpoint
 class QueryRequest(BaseModel):
     query: str
-    user_id: str
-
-def extract_text_from_pdf(file_path):
-    """Extracts text from a PDF using PyMuPDF."""
-    try:
-        doc = fitz.open(file_path)
-        text = "\n".join([page.get_text("text") for page in doc])
-        return text if text.strip() else "No readable text found in PDF."
-    except Exception as e:
-        return f"Error extracting text: {str(e)}"
-
-@app.post("/upload/")
-async def upload_file(file: UploadFile = File(...), user_id: str = Form(...)):
-    """Handles file upload and extracts text."""
-    if not file.filename.endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are allowed")
-
-    file_path = os.path.join(UPLOAD_FOLDER, file.filename)
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    # Extract text and store it in-memory
-    pdf_text = extract_text_from_pdf(file_path)
-    db[user_id] = {"file": file_path, "content": pdf_text}
-
-    return {"message": "File uploaded successfully", "file_name": file.filename}
 
 @app.post("/query/")
-async def query_data(data: QueryRequest):
-    """Processes queries related to uploaded PDFs."""
-    if not data.query.strip():
-        raise HTTPException(status_code=400, detail="Query cannot be empty")
-    
-    if data.user_id not in db:
-        raise HTTPException(status_code=404, detail="No file uploaded for this user")
-
+async def query_text(request: QueryRequest):
     try:
-        pdf_content = db[data.user_id]["content"]
-        response = f"Query: {data.query}\n\nExtracted PDF Content: {pdf_content[:1000]}..."  # Show first 1000 chars
-        return {"response": response}
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT content FROM pdfs ORDER BY id DESC LIMIT 1")  # Get the latest uploaded file
+        result = cursor.fetchone()
+        conn.close()
+
+        if not result:
+            raise HTTPException(status_code=404, detail="No PDFs found.")
+
+        # Simple search logic (improve with NLP later)
+        extracted_text = result[0]
+        matched_text = [line for line in extracted_text.split("\n") if request.query.lower() in line.lower()]
+
+        return {"query": request.query, "matched_text": matched_text[:5]}  # Return first 5 matches
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Server Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
+
+# List uploaded PDFs
+@app.get("/list_pdfs/")
+async def list_pdfs():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT filename FROM pdfs")
+    files = cursor.fetchall()
+    conn.close()
+
+    return {"uploaded_pdfs": [f[0] for f in files]}
